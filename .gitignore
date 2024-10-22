@@ -1,0 +1,69 @@
+# Compiled Object files, Static and Dynamic libs (Shared Objects)
+*.o
+*.a
+*.so
+
+# Folders
+_obj
+_test
+
+# Architecture specific extensions/prefixes
+*.[568vq]
+[568vq].out
+
+*.cgo1.go
+*.cgo2.c
+_cgo_defun.c
+_cgo_gotypes.go
+_cgo_export.*
+
+_testmain.go
+
+# common windows extensions
+*.exe
+*.test
+*.prof
+
+# asb files
+gosrc
+etc/dev.config.yaml
+etc/prod.config.yaml
+etc/mock.config.yaml
+
+#Compiled binaries
+/broker
+build/broker
+build/migration
+/dashboard-redirector
+build/dashboard-redirector
+build/dlv
+
+# python artifacts
+.python-version
+
+# ansible stuff
+main_*.yml
+ansible/main.retry
+
+# rendered templates
+templates/k8s-ansible-service-broker.yaml
+apiserver.local.config*
+
+# test artifacts
+adapters.out
+apb.out
+app.out
+auth.out
+broker.out
+coverage-all.out
+coverage.out
+handler.out
+registries.out
+validation.out
+
+# Vendor ci binary
+vendor/github.com/rthallisey/service-broker-ci/ci
+
+# IDE baggage
+.idea/
+.vscode/

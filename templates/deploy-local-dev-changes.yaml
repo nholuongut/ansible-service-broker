@@ -1,0 +1,59 @@
+# Goal of this template is to create or update the required resources so we can
+# run the broker locally yet have it behave as if it's running in the cluster.
+# The required changes are:
+# - Create a route for our etcd so we can communicate to it
+# - Update the asb service/endpoint so it points to our locally running broker
+#   Note the asb route will now use our updated service/endpoint to contact our local broker
+#   so there is no change from Service Catalog perspective
+apiVersion: v1
+kind: Template
+metadata:
+  name: ansible-service-broker-local-development
+objects:
+- apiVersion: v1
+  kind: Route
+  metadata:
+    name: asb-1338
+    labels:
+      app: ansible-service-broker
+      service: asb
+  spec:
+    to:
+      kind: Service
+      name: asb
+    port:
+      targetPort: port-1338
+    tls:
+      termination: ${TERMINATION}
+
+- apiVersion: v1
+  kind: Endpoints
+  metadata:
+    name: asb
+  subsets:
+  - addresses:
+    - ip: ${BROKER_IP_ADDR}
+    ports:
+    - name: port-1338
+      port: 1338
+      protocol: TCP
+
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: asb
+    annotations:
+      service.alpha.openshift.io/serving-cert-secret-name: asb-tls
+  spec:
+    ports:
+      - name: port-1338
+        port: 1338
+        targetPort: 1338
+        protocol: TCP
+
+parameters:
+
+- description: Route termination policy
+  displayname: Termination policy
+  name: TERMINATION
+  value: edge

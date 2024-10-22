@@ -1,0 +1,40 @@
+#####
+## CHANGE THESE TO REFLECT YOUR ENVIRONMENT
+#####
+
+# Typically the below values are:
+#  For Linux, use CLUSTER_HOST=172.17.0.1
+#  For macOS, use CLUSTER_HOST=192.168.37.1
+CLUSTER_HOST=172.17.0.1
+
+# Cluster Ports
+#  OpenShift: 8443
+#  Kubernetes: 6443
+CLUSTER_PORT=8443
+
+# BROKER_IP_ADDR must be the IP address of where to reach broker
+#   it should not be 127.0.0.1, needs to be an address the pods will be able to reach
+BROKER_IP_ADDR=${CLUSTER_HOST}
+
+# Docker registry used for getting APBs. Uncomment, if you want
+# something other than the default shown.
+# DOCKERHUB_ORG="ansibleplaybookbundle"
+
+BOOTSTRAP_ON_STARTUP="true"
+BEARER_TOKEN_FILE=""
+CA_FILE=""
+REFRESH_INTERVAL="600s"
+#LOCAL_ETCD="false" # Use localhost:2379 for etcd
+
+# Disable basic auth. it is enabled by default
+#ENABLE_BASIC_AUTH="false"
+
+# BROKER_USER and BROKER_PASS must be base64 encoded.
+# If not set, broker defaults to admin:admin
+#   echo -n admin | base64
+# the -n is VERY important
+#BROKER_USER=
+#BROKER_PASS=
+
+# Always, IfNotPresent, Never
+IMAGE_PULL_POLICY="Always"

@@ -1,0 +1,276 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: asb
+  namespace: ansible-service-broker
+
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: asb-auth
+rules:
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["create", "delete"]
+- apiGroups: ["authorization.openshift.io"]
+  resources: ["subjectrulesreview"]
+  verbs: ["create"]
+- apiGroups: ["authorization.k8s.io"]
+  resources: ["subjectaccessreviews"]
+  verbs: ["create"]
+- apiGroups: ["authentication.k8s.io"]
+  resources: ["tokenreviews"]
+  verbs: ["create"]
+- apiGroups: ["networking.k8s.io", ""]
+  attributeRestrictions: null
+  resources: ["networkpolicies"]
+  verbs: ["create", "delete"]
+- apiGroups: ["automationbroker.io"]
+  attributeRestrictions: null
+  resources: ["bundles", "bundlebindings", "bundleinstances"]
+  verbs: ["*"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: asb-auth-bind
+subjects:
+- kind: ServiceAccount
+  name: asb
+  namespace: ansible-service-broker
+roleRef:
+  kind: ClusterRole
+  name: asb-auth
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: asb
+subjects:
+- kind: ServiceAccount
+  name: asb
+  namespace: ansible-service-broker
+roleRef:
+  kind: ClusterRole
+  name: admin
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: access-asb-role
+rules:
+- nonResourceURLs: ["{{ broker_url_prefix }}", "{{ broker_url_prefix }}/*"]
+  verbs: ["get", "post", "put", "patch", "delete"]
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: asb-auth-secret
+  namespace: ansible-service-broker
+data:
+  username: "{{ broker_user }}"
+  password: "{{ broker_pass }}"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+   name: asb
+   namespace: ansible-service-broker
+   labels:
+     app: ansible-service-broker
+     service: asb
+spec:
+  ports:
+    - name: port-1338
+      port: 1338
+      targetPort: 1338
+      protocol: TCP
+  selector:
+    app: ansible-service-broker
+    service: asb
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: broker-config
+  namespace: ansible-service-broker
+  labels:
+    app: ansible-service-broker
+data:
+  broker-config: |
+    registry:
+      - type: "{{ registry_type }}"
+        name: "{{ registry_name }}"
+        url: "{{ registry_url }}"
+        org: "{{ dockerhub_org }}"
+        tag: "{{ tag }}"
+        white_list:
+          - ".*-apb$"
+    dao:
+      type: "crd"
+    log:
+      logfile: /var/log/ansible-service-broker/asb.log
+      stdout: true
+      level: debug
+      color: true
+    openshift:
+      host: "{{ cluster_auth_host }}"
+      ca_file: "{{ ca_file }}"
+      bearer_token_file: "{{ bearer_token_file }}"
+      image_pull_policy: "{{ image_pull_policy }}"
+      sandbox_role: "{{ sandbox_role }}"
+      namespace: ansible-service-broker
+      keep_namespace: {{ keep_namespace }}
+      keep_namespace_on_error: {{ keep_namespace_on_error }}
+    broker:
+      dev_broker: {{ dev_broker }}
+      bootstrap_on_startup: {{ bootstrap_on_startup }}
+      refresh_interval: "{{ refresh_interval }}"
+      launch_apb_on_bind: {{ launch_apb_on_bind }}
+      output_request: {{ output_request }}
+      recovery: {{ recovery }}
+      ssl_cert_key: /etc/tls/private/tls.key
+      ssl_cert: /etc/tls/private/tls.crt
+      auto_escalate: {{ auto_escalate }}
+      auth:
+        - type: basic
+          enabled: {{ enable_basic_auth }}
+
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: asb
+  namespace: ansible-service-broker
+  labels:
+    app: ansible-service-broker
+    service: asb
+spec:
+  strategy:
+    type: Recreate
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: ansible-service-broker
+        service: asb
+    spec:
+      serviceAccount: asb
+      restartPolicy: Always
+      containers:
+        - image: "{{ broker_image }}"
+          name: asb
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/ansible-service-broker
+            - name: asb-tls
+              mountPath: /etc/tls/private
+            - name: asb-auth-volume
+              mountPath: /var/run/asb-auth
+          ports:
+            - containerPort: 1338
+              protocol: TCP
+          env:
+          - name: BROKER_CONFIG
+            value: "{{ broker_config }}"
+          - name: INSECURE
+            value: "true"
+          resources: {}
+          terminationMessagePath: /tmp/termination-log
+      volumes:
+        - name: config-volume
+          configMap:
+            name: broker-config
+            items:
+            - key: broker-config
+              path: config.yaml
+        - name: asb-tls
+          secret:
+            secretName: asb-tls
+        - name: asb-auth-volume
+          secret:
+            secretName: asb-auth-secret
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ansibleservicebroker-client
+  namespace: ansible-service-broker
+
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: ansibleservicebroker-client
+subjects:
+- kind: ServiceAccount
+  name: ansibleservicebroker-client
+  namespace: ansible-service-broker
+roleRef:
+  kind: ClusterRole
+  name: access-asb-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ansibleservicebroker-client
+  annotations:
+    kubernetes.io/service-account.name: ansibleservicebroker-client
+type: kubernetes.io/service-account-token
+
+# CRDs for the broker.
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: bundles.automationbroker.io
+spec:
+  group: automationbroker.io
+  version: v1alpha1
+  scope: Namespaced
+  names:
+    plural: bundles
+    singular: bundle
+    kind: Bundle
+
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: bundlebindings.automationbroker.io
+spec:
+  group: automationbroker.io
+  version: v1alpha1
+  scope: Namespaced
+  names:
+    plural: servicebindings
+    singular: servicebinding
+    kind: ServiceBinding
+
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: bundleinstances.automationbroker.io
+spec:
+  group: automationbroker.io
+  version: v1alpha1
+  scope: Namespaced
+  names:
+    plural: serviceinstances
+    singular: serviceinstance
+    kind: ServiceInstance

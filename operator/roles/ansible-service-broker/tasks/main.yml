@@ -1,0 +1,136 @@
+---
+
+# Only want to do this once per execution of role
+- name: Get cluster api_groups
+  set_fact:
+    api_groups: "{{ lookup('k8s', cluster_info='api_groups', kubeconfig=lookup('env', 'K8S_AUTH_KUBECONFIG')) }}"
+
+# reconciled_generation - the last reconciled spec generation of a given CR
+# generation - the current generation of a given CR
+# These values are useful because if the current generation value is different
+# than the reconciled_generation value, we know that the CR's spec has been
+# changed, requiring a bounce of the broker's pod to accept new configuration.
+- name: Set reconciled_generation and generation facts
+  set_fact:
+    generation: "{{
+      lookup('k8s',
+      api_version='osb.openshift.io/v1alpha1',
+      kind='AutomationBroker',
+      kubeconfig=lookup('env', 'K8S_AUTH_KUBECONFIG'),
+      namespace=broker_namespace,
+      resource_name=broker_name).metadata.generation
+    }}"
+    reconciled_generation: "{{
+      lookup('k8s',
+      api_version='osb.openshift.io/v1alpha1',
+      kind='AutomationBroker',
+      kubeconfig=lookup('env', 'K8S_AUTH_KUBECONFIG'),
+      namespace=broker_namespace,
+      resource_name=broker_name).status.reconciledGeneration | default('')
+    }}"
+
+- name: Set pending_config_changes fact
+  set_fact:
+    pending_config_changes: "{{ generation != reconciled_generation }}"
+
+# Push validation into separate task files
+- name:  Validate pre-requisites for {{ state }}
+  import_tasks: "validate_{{ state }}.yml"
+
+- name: Set broker admin cluster rolebinding state={{ state }}
+  k8s:
+    state: "{{ state }}"
+    definition: "{{ lookup('template', 'broker-admin.clusterrolebinding.yaml.j2') | from_yaml }}"
+  register: crb_status
+  ignore_errors: yes
+
+- fail:
+    msg: "Operator does not have sufficient permissions to create RBAC policy for the broker, please check the documentation."
+  when: (not crb_status.failed) and crb_status.status is defined and crb_status != 403
+
+- fail:
+    msg: "Unable to create broker-admin clusterrolebinding"
+  when: crb_status.failed
+
+- name: Set up for TLS in k8s
+  import_tasks: tls_k8s.yml
+  when: "'route.openshift.io' not in api_groups"
+
+- name: Dashboard redirector
+  when: "'route.openshift.io' in api_groups"
+  block:
+    - name: Set dashboard redirector state={{ state }}
+      k8s:
+        state: "{{ state }}"
+        definition: "{{ lookup('template', 'broker-redirector.route.yaml.j2') | from_yaml }}"
+
+    - name: Set dashboard redirector host
+      when: state != "absent"
+      set_fact:
+        dashboard_redirector_host: "{{
+          lookup('k8s',
+          api_version='route.openshift.io/v1',
+          kind='Route',
+          kubeconfig=lookup('env', 'K8S_AUTH_KUBECONFIG'),
+          namespace=broker_namespace,
+          resource_name=dashboard_redirector_route_name).spec.host
+        }}"
+
+- name: ConfigMap for Broker
+  k8s:
+    state: "{{ state }}"
+    definition: "{{ lookup('template', 'broker-config.configmap.yaml.j2') | from_yaml }}"
+  notify: Redeploy the broker if the configmap changed
+
+- name: Broker application objects state={{ state }}
+  when: item.condition | default(True)
+  k8s:
+    state: "{{ state }}"
+    definition: "{{ lookup('template', item.value) | from_yaml }}"
+  loop:
+    - value: broker.serviceaccount.yaml.j2
+    - value: broker.clusterrole.yaml.j2
+    - value: broker.clusterrolebinding.yaml.j2
+    - value: broker.service.yaml.j2
+    - value: broker.deployment.yaml.j2
+    - value: broker.route.yaml.j2
+      condition: "{{ 'route.openshift.io' in api_groups }}"
+    - value: broker-client.serviceaccount.yaml.j2
+    - value: broker-client.clusterrole.yaml.j2
+    - value: broker-client.clusterrolebinding.yaml.j2
+    - value: broker-client.secret.yaml.j2
+    - value: broker-service-ca-bundle.configmap.yaml.j2
+    - value: broker-user-auth.clusterrole.yaml.j2
+    - value: broker.servicecatalog.yaml.j2
+      condition: "{{ 'servicecatalog.k8s.io' in api_groups }}"
+
+- name: Redeploy the broker's pod if pending config changes
+  k8s:
+    state: absent
+    kind: Pod
+    api_version: v1
+    namespace: broker_namespace
+    name: pod.metadata.name
+  vars:
+    pod: "{{
+      lookup('k8s',
+      kind='Pod',
+      api_version='v1',
+      kubeconfig=lookup('env', 'K8S_AUTH_KUBECONFIG'),
+      namespace=broker_namespace,
+      label_selector=('app=' + broker_name))
+    }}"
+  when:
+    - pending_config_changes
+    - reconciled_generation != ''
+    - pod
+
+- name: Write generation to status as reconciled generation
+  when: pending_config_changes
+  k8s_status:
+    api_version: osb.openshift.io/v1alpha1
+    kind: AutomationBroker
+    namespace: "{{ broker_namespace }}"
+    name: "{{ broker_name }}"
+    status:
+      reconciledGeneration: "{{ generation }}"

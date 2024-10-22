@@ -1,0 +1,12 @@
+[Unit]
+Description=Ansible Service Broker
+After=network.target
+
+[Service]
+User=ansibleservicebroker
+Group=ansibleservicebroker
+ExecStart=/usr/bin/asbd
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

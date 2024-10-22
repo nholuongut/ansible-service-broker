@@ -1,0 +1,41 @@
+diff --git a/ansible_role/apb.yml b/ansible_role/apb.yml
+index c1885a4ae..854b1a4a4 100644
+--- a/ansible_role/apb.yml
++++ b/ansible_role/apb.yml
+@@ -14,7 +14,7 @@ metadata:
+     WARNING!!! Use of this APB through the service-catalog is
+     not supported.
+   dependencies:
+-    - 'docker.io/ansibleplaybookbundle/origin-ansible-service-broker'
++    - 'registry.redhat.io/openshift3/ose-ansible-service-broker'
+   displayName: Automation Broker (APB)
+   providerDisplayName: "Red Hat, Inc."
+ plans:
+diff --git a/ansible_role/defaults/main.yml b/ansible_role/defaults/main.yml
+index 10633c472..8ed478b06 100644
+--- a/ansible_role/defaults/main.yml
++++ b/ansible_role/defaults/main.yml
+@@ -11,10 +11,10 @@ create_broker_namespace: false
+ wait_for_broker: false # By default, we do not wait for the broker to be available
+ 
+ # The image to use for the broker
+-broker_image_registry_url: docker.io
+-broker_image_registry_org: ansibleplaybookbundle
+-broker_image_tag: latest
+-broker_image: "{{ broker_image_registry_url }}/{{ broker_image_registry_org }}/origin-ansible-service-broker:{{ broker_image_tag }}"
++broker_image_registry_url: registry.redhat.io
++broker_image_registry_org: openshift3
++broker_image_tag: v3.11
++broker_image: "{{ broker_image_registry_url }}/{{ broker_image_registry_org }}/ose-ansible-service-broker:{{ broker_image_tag }}"
+ broker_image_pull_policy: "IfNotPresent"
+ broker_probe_initial_delay: 120
+ broker_node_selector: ""
+@@ -55,7 +55,7 @@ broker_basic_auth_username: "admin"
+ broker_basic_auth_password: "admin"
+ 
+ # Broker dockerhub registry options
+-broker_dockerhub_enabled: true
++broker_dockerhub_enabled: false
+ broker_dockerhub_name: dh
+ broker_dockerhub_url: https://registry.hub.docker.com
+ broker_dockerhub_org: ansibleplaybookbundle

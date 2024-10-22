@@ -1,0 +1,10 @@
+---
+- version: v1alpha1
+  group: osb.openshift.io
+  kind: AutomationBroker
+  playbook: /opt/ansible/playbook.yaml
+  reconcilePeriod: 0
+  finalizer:
+    name: finalizer.osb.openshift.io
+    vars:
+      state: absent
